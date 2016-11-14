@@ -1,0 +1,89 @@
+description "Vault server"
+
+setuid <%= @vault_user %>
+setgid <%= @vault_group %>
+
+start on (started mount_vault_log_disk and runlevel [2345])
+stop on runlevel [!2345]
+
+respawn
+normal exit 0 INT
+kill signal INT
+
+pre-start script
+    . /etc/default/ec2-user-data
+        
+    <%= @bin_dir %>/vault_dl_config
+end script
+
+script
+    . /etc/default/ec2-user-data
+
+    if [ -f "/etc/service/vault" ]; then
+        . /etc/service/vault
+    fi
+    
+    # Make sure to use all our CPUs, because Vault can block a scheduler thread
+    export GOMAXPROCS=`nproc`
+    
+    exec <%= @bin_dir %>/vault server \
+        -config=<%= @config_dir %>/configuration.json \
+        -log-level=INFO \
+        ${VAULT_FLAGS} \
+        >><%= @log_file %> 2>&1
+end script
+
+post-start script
+    . /etc/default/ec2-user-data
+
+    # wait for vault to be up
+    SLEEP_COUNT=0
+    while [ "$(curl -sk https://127.0.0.1:8200/v1/sys/init | jq -r .initialized)" = "" ]
+    do
+      echo "Waiting for Vault to be up ${SLEEP_COUNT} seconds out of 30"
+      sleep 1;
+      SLEEP_COUNT=$((SLEEP_COUNT + 1))
+
+      if [ "$SLEEP_COUNT" -gt 30 ]
+      then
+        echo "exiting"
+        exit 1
+      fi
+    done
+
+    INITIALIZED=$(curl -sk https://127.0.0.1:8200/v1/sys/init | jq -r .initialized)
+    if [ "${INITIALIZED}" = "true" ]
+    then
+        s3_get_enc_object.py --bucket ${CONFIG_S3_BUCKET} --key config/secrets.json --file <%= @config_dir %>/temp-data.json
+        KEYS_STRING=$(cat <%= @config_dir %>/temp-data.json | jq -r .vault.keys)
+        rm -f <%= @config_dir %>/temp-data.json
+        TRIMMED=$(echo $KEYS_STRING | sed 's/\[\s//g' | sed 's/\ \]//g')
+        IFS=", "
+        set $TRIMMED
+        for KEY in "$@"
+        do
+            curl -sk -X POST -d "{\"key\":${KEY}}" https://127.0.0.1:8200/v1/sys/unseal
+        done
+
+        # Make sure instance is unsealed and notify Cloud Formation
+        SEALED=$(curl -sk https://127.0.0.1:8200/v1/sys/health | jq -r .sealed)
+        URL="http://169.254.169.254/latest/"
+        ID=$(curl -s $URL/meta-data/instance-id)
+        STACK_ID=$(aws ec2 describe-tags --region ${EC2_REGION} --filter Name=resource-id,Values=${ID} | jq -r .Tags | jq '.[] | select(.Key=="aws:cloudformation:stack-id")' | jq ".Value")
+
+        if [ "${SEALED}" = "false" ]
+        then
+            aws --region ${EC2_REGION} cloudformation signal-resource \
+              --logical-resource-id VaultAutoScalingGroup \
+              --stack-name $(echo "$STACK_ID" | sed -e 's/^"//' -e 's/"$//') \
+              --status SUCCESS \
+              --unique-id ${ID}
+        else
+            aws --region ${EC2_REGION} cloudformation signal-resource \
+              --logical-resource-id VaultAutoScalingGroup \
+              --stack-name $(echo "$STACK_ID" | sed -e 's/^"//' -e 's/"$//') \
+              --status FAILURE \
+              --unique-id ${ID}
+        fi
+    fi
+end script

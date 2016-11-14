@@ -1,0 +1,17 @@
+<%= @log_dir %>/vault.*.log {
+    size 1G
+    notifempty
+    nocompress
+    missingok
+    create 0644 vault vault 
+    rotate 1
+}
+
+<%= @log_dir %>/vault_audit.*.log {
+    size 1G
+    notifempty
+    nocompress
+    missingok
+    create 0644 syslog adm 
+    rotate 1
+}
