@@ -5,6 +5,9 @@ class vault::params {
     
     $vault_user = 'vault'
     $vault_group = 'vault'
+
+    $vault_limit_nofile = '999999'
+
     $syslog_user = 'syslog'
     $adm_group = 'adm'
     
