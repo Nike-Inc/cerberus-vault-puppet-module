@@ -3,6 +3,8 @@ description "Vault server"
 setuid <%= @vault_user %>
 setgid <%= @vault_group %>
 
+limit nofile <%= @vault_limit_nofile %> <%= @vault_limit_nofile %>
+
 start on (started mount_vault_log_disk and runlevel [2345])
 stop on runlevel [!2345]
 
