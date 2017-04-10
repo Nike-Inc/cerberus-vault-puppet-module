@@ -1,6 +1,6 @@
 class vault::params {
     $vault_dist_url = 'https://releases.hashicorp.com/vault'
-    $package_version = '0.6.0'
+    $package_version = '0.7.0'
     $binary_zip_name = 'linux_amd64.zip'
     
     $vault_user = 'vault'
