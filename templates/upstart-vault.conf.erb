@@ -30,7 +30,7 @@ script
     
     exec <%= @bin_dir %>/vault server \
         -config=<%= @config_dir %>/configuration.json \
-        -log-level=INFO \
+        -log-level=info \
         ${VAULT_FLAGS} \
         >><%= @log_file %> 2>&1
 end script
