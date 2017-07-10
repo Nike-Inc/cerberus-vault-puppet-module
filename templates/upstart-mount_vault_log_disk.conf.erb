@@ -1,8 +1,0 @@
-description "Setup for mounting the vault log disk"
-
-start on runlevel [2345]
-stop on shutdown
-
-script
-    <%= @bin_dir %>/mount_vault_log_disk 2>&1 >> <%= @log_mount_disk_file %>
-end script
